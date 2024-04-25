@@ -1,0 +1,70 @@
+---
+- name: Setup Ubuntu Server with Fail2Ban, PowerShell, Docker, and User Accounts
+  hosts: all
+  become: yes
+  vars:
+    users:
+      - username: kameraTilbygg
+      - username: kameraUthus
+
+  tasks:
+    - name: Update apt cache and upgrade packages
+      apt:
+        update_cache: yes
+        upgrade: 'yes'
+
+    - name: Install necessary packages for Docker and Fail2Ban
+      apt:
+        name:
+          - fail2ban
+          - docker.io
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg-agent
+          - software-properties-common
+        state: present
+
+    - name: Install PowerShell 7
+      shell: |
+        wget -q "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
+        dpkg -i packages-microsoft-prod.deb
+        apt-get update
+        apt-get install -y powershell
+
+    - name: Create user accounts with home directories
+      user:
+        name: "{{ item.username }}"
+        comment: "User for camera uploads"
+        create_home: yes
+        shell: /bin/bash
+      loop: "{{ users }}"
+
+    - name: Set directory permissions for user home directories
+      file:
+        path: "/home/{{ item.username }}"
+        state: directory
+        owner: "{{ item.username }}"
+        group: "{{ item.username }}"
+        mode: '0755'
+      loop: "{{ users }}"
+
+    - name: Install and configure Fail2Ban
+      block:
+        - name: Ensure Fail2Ban is running and enabled
+          service:
+            name: fail2ban
+            state: started
+            enabled: yes
+
+        - name: Configure jail for SSH with Fail2Ban
+          copy:
+            dest: /etc/fail2ban/jail.local
+            content: |
+              [DEFAULT]
+              bantime = 600
+              findtime = 300
+              maxretry = 10
+
+              [sshd]
+              enabled = true
